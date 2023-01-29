@@ -34,7 +34,7 @@ fun signUp(username: String,
             }
     )
 }
-//送信された本人確認用コードを使用し、登録を認証する。
+//送信された本人確認用コードを使用し、登録を認証する
 fun confirmSignUp(username: String, 
                   verifyCode: String,
                   successCallback: () -> Unit,
