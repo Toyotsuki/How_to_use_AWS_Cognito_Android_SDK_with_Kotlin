@@ -1,1 +1,93 @@
+/* 前提
+ * AWS User Poolは作成済みでUserPoolId, ClientId, ClientSecretの情報が
+ * 手元にあるものとする。
+ */
 
+//依存関係、gradleに下記を追加
+build.gradle
+implementation 'com.amazonaws:aws-android-sdk-cognitoidentityprovider:2.19.0'
+
+//Cognito認証機能の実装
+
+//アクセスのためのuserPoolインスタンスを作成
+val userPoolId = "ap-northeast-1_xxxxx"
+val clientId = "yyyyy"
+val clientSecret = "zzzzz"
+val userPool = CognitoUserPool(context, userPoolId, clientId, clientSecret, Regions.XXXXXXXXXX)
+
+//サインアップの実装
+fun signUp(username: String, 
+           password: String,
+           successCallback: () -> Unit, 
+           failureCallback: (exception: Exception?) -> Unit
+) {
+    val userAttributes = CognitoUserAttributes()
+    //ユーザープールにユーザーが追加され、本人確認用コードが送信される
+    userPool.signUpInBackground(username, password, userAttributes, null,
+            object : SignUpHandler {
+                override fun onSuccess(user: CognitoUser?, signUpResult: SignUpResult?) {
+                    successCallback()
+                }
+                override fun onFailure(exception: java.lang.Exception?) {
+                    failureCallback(exception)
+                }
+            }
+    )
+}
+//送信された本人確認用コードを使用し、登録を認証する。
+fun confirmSignUp(username: String, 
+                  verifyCode: String,
+                  successCallback: () -> Unit,
+                  failureCallback: (exception: Exception?) -> Unit
+) {
+    userPool.getUser(username).confirmSignUpInBackground(verifyCode, false,
+        object : GenericHandler {
+            override fun onSuccess() {
+                successCallback()
+            }
+            override fun onFailure(exception: Exception?) {
+                failureCallback(exception)
+            }
+        })
+}
+
+//サインインの実装
+fun signIn(username: String, 
+           password: String,
+           successCallback: () -> Unit,
+           failureCallback: (exception: Exception?) -> Unit
+) {
+    //サインインに使用される部分、一度サインインに成功すると端末内にセッションが保持され、
+    //getSessionInBackgroundで内部的にユーザープールの更新トークンによって更新され、期限切れまでサインイン状態が続く
+    //セッション情報が無い場合はgetAuthenticationDetailsが呼び出される
+    userPool.getUser(username).getSessionInBackground(
+        object : AuthenticationHandler {
+            
+            //IDトークンはCognitoUserSession内にカプセル化され格納される
+            //ユーザープール内のユーザー情報はIDトークンにjson形式で格納されており、
+            //IDトークンをデコードするか、認証成功後にgetDetailsHandlerを呼び出すことでユーザー情報を取得可能
+            override fun onSuccess(userSession: CognitoUserSession?, newDevice: CognitoDevice?) {
+                successCallback()
+            }
+            override fun getAuthenticationDetails(
+                authenticationContinuation: AuthenticationContinuation?,
+                userId: String?
+            ) {
+                val authenticationDetails = AuthenticationDetails(userId, password, null)
+                authenticationContinuation!!.setAuthenticationDetails(authenticationDetails)
+                authenticationContinuation.continueTask()
+            }
+            //二段階認証を設定したい場合に使用
+            override fun getMFACode(continuation: MultiFactorAuthenticationContinuation?) {
+                /* 今回は不使用 */
+            }
+            //カスタム認証を設定したい場合に使用
+            override fun authenticationChallenge(continuation: ChallengeContinuation?) {
+                /* 今回は不使用 */
+            }
+            //認証失敗時
+            override fun onFailure(exception: Exception?) {
+                failureCallback(exception)
+            }
+        })
+}
